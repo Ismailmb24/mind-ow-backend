@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
-from ..models.user import User, UserCreate, UserPublic
+from ..models.models import User, UserCreate, UserPublic
 from ..dependencies import get_session
 from ..security_utils import get_user, get_hash_password, get_active_current_user
 

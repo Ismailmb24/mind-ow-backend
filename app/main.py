@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import FastAPI, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, select
+from sqlmodel import Session, select, SQLModel
 
 from .config import settings
 from .database import create_db_and_tables
 from .dependencies import get_session
-from .models.token import Token, RefreshToken
+from .models.models import Token, RefreshToken
 from .routers import tasks, users
 from .security_utils import authenticate_user, create_access_token, create_refresh_token, hash_token, revoke_chained_fresh_tokens
 
@@ -98,8 +98,6 @@ def login_for_access_token(
     session.add(token_row)
     session.commit()
 
-    print("expire at:", access_token_expire)
-
     # return tokens
     return Token(
         access_token=access_token, 
@@ -108,9 +106,11 @@ def login_for_access_token(
         refresh_token=refresh_token
     )
 
+class RefreshTokenRequest(SQLModel):
+    refresh_token: str
 
 @app.post("/refresh-token", response_model=Token)
-def refresh_access_token(refresh_token: str, session: Annotated[Session, Depends(get_session)]):
+def refresh_access_token(data: RefreshTokenRequest, session: Annotated[Session, Depends(get_session)]):
     """
     Refresh access token.
 
@@ -123,7 +123,7 @@ def refresh_access_token(refresh_token: str, session: Annotated[Session, Depends
     """
 
     # check if refresh token is provided
-    print("REFRESH TOKEN:", refresh_token)
+    refresh_token = data.refresh_token
     if not refresh_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh token")
     
@@ -132,11 +132,18 @@ def refresh_access_token(refresh_token: str, session: Annotated[Session, Depends
     statement = select(RefreshToken).where(RefreshToken.hash_token == hash_refresh_token)
     token_row = session.exec(statement).first()
 
+    # if token not found, reject
     if not token_row:
-        revoke_chained_fresh_tokens(token_row, session)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    if not token_row.expired_at < datetime.now(timezone.utc):
+    # access expired and normalize to UTC if naive
+    expired_at = token_row.expired_at
+    if expired_at.tzinfo is None:
+        expired_at = expired_at.replace(tzinfo=timezone.utc)
+
+    # if token expired, revoke chained fresh tokens and reject
+    if expired_at < datetime.now(timezone.utc):
+        revoke_chained_fresh_tokens(token_row, session)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
     
     # revoke chained fresh tokens
@@ -164,7 +171,7 @@ def refresh_access_token(refresh_token: str, session: Annotated[Session, Depends
         payload, 
         expires_at=acces_token_expire
     )
-
+    
     return Token(
         access_token=new_acces_token, 
         token_type="bearer", 
@@ -174,7 +181,7 @@ def refresh_access_token(refresh_token: str, session: Annotated[Session, Depends
 
 
 @app.get("/signout")
-def signout(refresh_token: str, session: Annotated[Session, Depends(get_session)]):
+def signout(data: RefreshTokenRequest, session: Annotated[Session, Depends(get_session)]):
     """
     Sign out user.
 
@@ -187,6 +194,7 @@ def signout(refresh_token: str, session: Annotated[Session, Depends(get_session)
     """
 
     # hash the refresh token
+    refresh_token = data.refresh_token
     hash_refresh_token = hash_token(refresh_token)
 
     statement = select(RefreshToken).where(RefreshToken.hash_token == hash_refresh_token)

@@ -12,10 +12,9 @@ from pwdlib import PasswordHash
 import jwt
 from jwt.exceptions import InvalidTokenError
 
-from .models.user import User
+from .models.models import User, RefreshToken
 from .dependencies import get_session
 from .config import settings
-from .models.token import RefreshToken
 
 SECRETE_KEY = settings.SECRETE_KEY
 ALGORITHM = settings.ALGORITHM
