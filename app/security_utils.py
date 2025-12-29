@@ -2,17 +2,20 @@
 from typing import Annotated
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
+import secrets
+import hashlib
 
 from fastapi import HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer
-from sqlmodel import select
+from sqlmodel import select, Session
 from pwdlib import PasswordHash
 import jwt
 from jwt.exceptions import InvalidTokenError
 
-from .models import User
+from .models.user import User
 from .dependencies import get_session
 from .config import settings
+from .models.token import RefreshToken
 
 SECRETE_KEY = settings.SECRETE_KEY
 ALGORITHM = settings.ALGORITHM
@@ -82,13 +85,13 @@ def authenticate_user(email: str, password: str):
     return user
 
 
-def create_access_token(data: dict, expire_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_at: datetime | None = None):
     """Create access token"""
     to_copy = data.copy()
-    if expire_delta:
-        expire = datetime.now(timezone.utc) + expire_delta
+    if expires_at:
+        expire = expires_at
     else:
-        expire = datetime.now(timezone.utc) + timedelta(days=30)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_copy.update({"exp": expire})
     encode_jwt = jwt.encode(to_copy, SECRETE_KEY, algorithm=ALGORITHM)
     return encode_jwt
@@ -96,4 +99,20 @@ def create_access_token(data: dict, expire_delta: timedelta | None = None):
 
 def create_refresh_token():
     """Create refresh token string"""
-    return str(uuid4())
+    return secrets.token_urlsafe(64)
+
+def hash_token(token: str):
+    """Hash token string"""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def revoke_chained_fresh_tokens(token: RefreshToken | None, session: Session) -> None:
+    """Revoke chained refresh tokens"""
+    while token is not None:
+        token.revoked_at = datetime.now(timezone.utc)
+
+        if not token.replaced_by:
+            break
+
+        token = session.get(RefreshToken, token.replaced_by)
+
+    session.commit()

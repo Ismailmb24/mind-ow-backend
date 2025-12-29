@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 
 from sqlmodel import Session, select
-from ..models import TaskCreate, TaskPublic, Task, TaskUpdate
+from ..models.task import TaskCreate, TaskPublic, Task, TaskUpdate
 from ..dependencies import get_session
 
 router = APIRouter(

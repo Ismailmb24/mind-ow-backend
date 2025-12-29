@@ -10,11 +10,11 @@ from sqlmodel import Session, select
 from .config import settings
 from .database import create_db_and_tables
 from .dependencies import get_session
-from .models import Token, RefreshToken
+from .models.token import Token, RefreshToken
 from .routers import tasks, users
-from .security_utils import authenticate_user, create_access_token, create_refresh_token
+from .security_utils import authenticate_user, create_access_token, create_refresh_token, hash_token, revoke_chained_fresh_tokens
 
-ACCESS_TOKEN_EXPIRE_DAYS = settings.ACCESS_TOKEN_EXPIRE_DAYS
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 app = FastAPI(
     title="To-Do",
@@ -47,9 +47,8 @@ app.include_router(users.router)
 
 
 
-@app.post("/signin")
+@app.post("/signin", response_model=Token)
 def login_for_access_token(
-    response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     session: Annotated[Session, Depends(get_session)]
 ):
@@ -71,6 +70,7 @@ def login_for_access_token(
     #         detail="Invalid email format"
     #     )
 
+    # authenticate user
     user = authenticate_user(form_data.username, form_data.password)
     if not user or not user.id:
         raise HTTPException(
@@ -78,28 +78,39 @@ def login_for_access_token(
             detail="Incorrect email or password"
         )
 
-    access_token_expire = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    # create access token
+    access_token_expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email}, expire_delta=access_token_expire
+        data={"sub": user.email}, expires_at=access_token_expire
     )
-    refresh_token = create_refresh_token()
 
+    # create refresh token
+    refresh_token = create_refresh_token()
+    # hash the refresh token before storing
+    hash_refresh_token = hash_token(refresh_token)
+
+    # store refresh token in  database
     token_row = RefreshToken(
         user_id=user.id,
-        token=refresh_token,
-        expired_at=datetime.now(timezone.utc)
+        hash_token=hash_refresh_token,
+        expired_at=datetime.now(timezone.utc) + timedelta(days=30)
     )
     session.add(token_row)
     session.commit()
 
-    response.set_cookie(key="refresh_token",
-                        value=refresh_token, secure=True, samesite="strict")
+    print("expire at:", access_token_expire)
 
-    return Token(access_token=access_token, token_type="bearer")
+    # return tokens
+    return Token(
+        access_token=access_token, 
+        token_type="bearer", 
+        expires_at=access_token_expire,
+        refresh_token=refresh_token
+    )
 
 
-@app.post("/refresh")
-def refresh_access_token(request: Request, session: Annotated[Session, Depends(get_session)]):
+@app.post("/refresh-token", response_model=Token)
+def refresh_access_token(refresh_token: str, session: Annotated[Session, Depends(get_session)]):
     """
     Refresh access token.
 
@@ -110,29 +121,60 @@ def refresh_access_token(request: Request, session: Annotated[Session, Depends(g
     :param session: Description
     :type session: Annotated[Session, Depends(get_session)]
     """
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
-        raise HTTPException(status_code=401, detail="No refresh token")
 
-    statement = select(RefreshToken).where(RefreshToken.token == refresh_token)
+    # check if refresh token is provided
+    print("REFRESH TOKEN:", refresh_token)
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh token")
+    
+    # check if refresh token is valid
+    hash_refresh_token = hash_token(refresh_token)
+    statement = select(RefreshToken).where(RefreshToken.hash_token == hash_refresh_token)
     token_row = session.exec(statement).first()
 
     if not token_row:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        revoke_chained_fresh_tokens(token_row, session)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     if not token_row.expired_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="Refresh token expired")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
+    
+    # revoke chained fresh tokens
+    new_fresh_token = create_refresh_token()
+    hash_new_fresh_token = hash_token(new_fresh_token)
+    new_token_row = RefreshToken(
+        user_id=token_row.user_id,
+        hash_token=hash_new_fresh_token,
+        expired_at=datetime.now(timezone.utc) + timedelta(days=30)
+    )
+    session.add(new_token_row)
+    session.commit()
 
+    # mark old token as revoked
+    token_row.revoked_at = datetime.now(timezone.utc)
+    token_row.replaced_by = new_token_row.id
+    session.commit()
+    
+    
+
+    # create new access token
     payload = {"sub": token_row.user.email}
-    acces_token_expire = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    acces_token_expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     new_acces_token = create_access_token(
-        payload, expire_delta=acces_token_expire)
+        payload, 
+        expires_at=acces_token_expire
+    )
 
-    return {"access_token": new_acces_token, "type": "bearer"}
+    return Token(
+        access_token=new_acces_token, 
+        token_type="bearer", 
+        expires_at=acces_token_expire,
+        refresh_token=new_fresh_token
+    )
 
 
 @app.get("/signout")
-def signout(request: Request, session: Annotated[Session, Depends(get_session)]):
+def signout(refresh_token: str, session: Annotated[Session, Depends(get_session)]):
     """
     Sign out user.
 
@@ -143,13 +185,15 @@ def signout(request: Request, session: Annotated[Session, Depends(get_session)])
     :param session: Description
     :type session: Annotated[Session, Depends(get_session)]
     """
-    refresh_token = request.cookies.get("refresh_token")
 
-    statement = select(RefreshToken).where(RefreshToken.token == refresh_token)
+    # hash the refresh token
+    hash_refresh_token = hash_token(refresh_token)
+
+    statement = select(RefreshToken).where(RefreshToken.hash_token == hash_refresh_token)
     token_row = session.exec(statement).first()
 
     if token_row:
-        session.delete(token_row)
+        token_row.revoked_at = datetime.now(timezone.utc)
         session.commit()
 
     return {"detail": "Signed out"}

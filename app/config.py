@@ -4,7 +4,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     SECRETE_KEY: str = ""
     ALGORITHM: str = ""
-    ACCESS_TOKEN_EXPIRE_DAYS: int = 0
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 0
 
     class Config:
         env_file = ".env"
