@@ -53,6 +53,7 @@ class User(UserBase, table=True):
     hashed_password: str
 
     refresh_tokes: list["RefreshToken"] = Relationship(back_populates="user")
+    email_verification_tokens: list["EmailVerificationToken"] = Relationship(back_populates="user")
 
 class UserCreate(UserBase):
     password: str
@@ -80,3 +81,13 @@ class RefreshToken(SQLModel, table=True):
 
     user_id: UUID = Field(foreign_key="user.id")
     user: User = Relationship(back_populates="refresh_tokes")
+
+# email verification token model
+class EmailVerificationToken(SQLModel, table=True):
+    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    hash_token: str
+    expired_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
+    used_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
+    user_id: UUID = Field(foreign_key="user.id")
+    user: User = Relationship(back_populates="email_verification_tokens")

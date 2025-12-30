@@ -10,7 +10,7 @@ from sqlmodel import Session, select, SQLModel
 from .config import settings
 from .database import create_db_and_tables
 from .dependencies import get_session
-from .models.models import Token, RefreshToken
+from .models.models import EmailVerificationToken, Token, RefreshToken
 from .routers import tasks, users
 from .security_utils import authenticate_user, create_access_token, create_refresh_token, hash_token, revoke_chained_fresh_tokens
 
@@ -90,12 +90,12 @@ def login_for_access_token(
     hash_refresh_token = hash_token(refresh_token)
 
     # store refresh token in  database
-    token_row = RefreshToken(
+    refresh_token_row = RefreshToken(
         user_id=user.id,
         hash_token=hash_refresh_token,
         expired_at=datetime.now(timezone.utc) + timedelta(days=30)
     )
-    session.add(token_row)
+    session.add(refresh_token_row)
     session.commit()
 
     # return tokens
@@ -205,3 +205,48 @@ def signout(data: RefreshTokenRequest, session: Annotated[Session, Depends(get_s
         session.commit()
 
     return {"detail": "Signed out"}
+
+class EmailVerificationRequest(SQLModel):
+    token: str 
+
+@app.post("/verify-email")
+def verify_email(data: EmailVerificationRequest, session: Annotated[Session, Depends(get_session)]):
+    """
+    Verify email using token.
+
+    - **token**: verification token
+    \f
+    :param request: Description
+    :type request: Request
+    :param session: Description
+    :type session: Annotated[Session, Depends(get_session)]
+    """
+
+    # hash the token
+    token = data.token
+    hash_email_token = hash_token(token)
+
+    statement = select(EmailVerificationToken).where(EmailVerificationToken.hash_token == hash_email_token)
+    token_row = session.exec(statement).first()
+
+    if not token_row:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+
+    # access expired and normalize to UTC if naive
+    expired_at = token_row.expired_at
+    if expired_at.tzinfo is None:
+        expired_at = expired_at.replace(tzinfo=timezone.utc)
+
+    # if token expired, reject
+    if expired_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token expired")
+
+    # mark user's email as verified
+    user = token_row.user
+    user.email_verified_at = datetime.now(timezone.utc)
+    session.delete(token_row)
+    session.commit()
+
+    return {"detail": "Email verified"}
+
+# TODO: add resend verification email endpoint

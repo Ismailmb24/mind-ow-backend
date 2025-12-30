@@ -11,6 +11,7 @@ from sqlmodel import select, Session
 from pwdlib import PasswordHash
 import jwt
 from jwt.exceptions import InvalidTokenError
+import resend
 
 from .models.models import User, RefreshToken
 from .dependencies import get_session
@@ -18,6 +19,9 @@ from .config import settings
 
 SECRETE_KEY = settings.SECRETE_KEY
 ALGORITHM = settings.ALGORITHM
+RESEND_API_KEY = settings.RESEND_API_KEY
+
+resend.api_key = RESEND_API_KEY
 
 password_hash = PasswordHash.recommended()
 
@@ -115,3 +119,12 @@ def revoke_chained_fresh_tokens(token: RefreshToken | None, session: Session) ->
         token = session.get(RefreshToken, token.replaced_by)
 
     session.commit()
+
+def create_email_verification_token():
+    """Create email verification token string"""
+    return secrets.token_urlsafe(48)
+
+def send_verification_email(params: resend.Emails.SendParams):
+    """Send verification email using Resend API"""
+
+    email = resend.Emails.send(params)

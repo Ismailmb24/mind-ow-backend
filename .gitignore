@@ -1,0 +1,12 @@
+#ignored evironment files
+.env
+.env.local
+
+#ignore .venv folder
+.venv/
+
+#ignore python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
