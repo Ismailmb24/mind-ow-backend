@@ -7,7 +7,7 @@ import resend
 
 from ..models.models import User, UserCreate, UserPublic, EmailVerificationToken
 from ..dependencies import get_session
-from ..security_utils import get_user, get_hash_password, get_active_current_user, hash_token, create_email_verification_token,send_verification_email
+from ..security_utils import get_user, get_hash_password, get_active_current_user, set_verification_token
 from ..config import settings
 
 EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
@@ -38,43 +38,8 @@ def create_user(session: Annotated[Session, Depends(get_session)], user_data: Us
     session.commit()
     session.refresh(db_user)
 
-    # check user created
-    if not db_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="User creation failed"
-        )
-    
-
-    # setup verification token data
-    expires_hours = datetime.now(timezone.utc) + timedelta(hours=EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
-    verification_token = create_email_verification_token()
-    hash_verification_token = hash_token(verification_token)
-
-    # store email verification token row
-    verification_token_row = EmailVerificationToken(
-        hash_token=hash_verification_token,
-        expired_at=expires_hours,
-        user_id=db_user.id
-    )
-
-    session.add(verification_token_row)
-    session.commit()
-    session.refresh(verification_token_row)
-
-
-    # create email params
-    params: resend.Emails.SendParams = {
-        "from": "Welcome Team <onboarding@resend.dev>",
-        "to": [user_data.email],
-        "subject": "Welcome to MindOw! Please verify your email",
-        "html": f"<h1>Welcome to MindOw, {user_data.full_name or user_data.email}!</h1>"
-                f"<p>Please verify your email by clicking the link below:</p>"
-                f"<a href='https://your-frontend-domain.com/verify-email?token={verification_token}'>Verify Email</a>" # token to be replaced
-    }
-
-    # send verification email
-    background_tasks.add_task(send_verification_email, params)
+    # set email verification token and send email
+    set_verification_token(background_tasks, db_user, session)
 
 
     return db_user

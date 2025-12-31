@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 import secrets
 import hashlib
 
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import select, Session
 from pwdlib import PasswordHash
@@ -13,13 +13,14 @@ import jwt
 from jwt.exceptions import InvalidTokenError
 import resend
 
-from .models.models import User, RefreshToken
+from .models.models import User, RefreshToken, EmailVerificationToken
 from .dependencies import get_session
 from .config import settings
 
 SECRETE_KEY = settings.SECRETE_KEY
 ALGORITHM = settings.ALGORITHM
 RESEND_API_KEY = settings.RESEND_API_KEY
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
 
 resend.api_key = RESEND_API_KEY
 
@@ -128,3 +129,41 @@ def send_verification_email(params: resend.Emails.SendParams):
     """Send verification email using Resend API"""
 
     email = resend.Emails.send(params)
+
+def set_verification_token(background_tasks: BackgroundTasks, user: User, session: Session):
+    """Set email verification token and send verification email"""
+    # setup verification token data
+    expires_hours = datetime.now(timezone.utc) + timedelta(hours=EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
+    verification_token = create_email_verification_token()
+    hash_verification_token = hash_token(verification_token)
+
+    # store email verification token row
+    if user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User does not have an ID"
+        )
+
+    verification_token_row = EmailVerificationToken(
+        hash_token=hash_verification_token,
+        expired_at=expires_hours,
+        user_id=user.id
+    )
+
+    session.add(verification_token_row)
+    session.commit()
+    session.refresh(verification_token_row)
+
+
+    # create email params
+    params: resend.Emails.SendParams = {
+        "from": "Welcome Team <onboarding@resend.dev>",
+        "to": [user.email],
+        "subject": "Welcome to MindOw! Please verify your email",
+        "html": f"<h1>Welcome to MindOw, {user.full_name or user.email}!</h1>"
+                f"<p>Please verify your email by clicking the link below:</p>"
+                f"<a href='https://your-frontend-domain.com/verify-email?token={verification_token}'>Verify Email</a>" # token to be replaced
+    }
+
+    # send verification email
+    background_tasks.add_task(send_verification_email, params)
