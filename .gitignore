@@ -1,12 +1,40 @@
-#ignored evironment files
-.env
-.env.local
+#==============================
+#      Python Git Ignore       
+#==============================
 
-#ignore .venv folder
+#====================================
+#ignore environment variable files
+#====================================
+.env
+.env.*
+!.env.example
+
+#====================================
+#ignore virtual environment folders
+#====================================
+venv/
+env/
 .venv/
 
+#====================================
 #ignore python cache files
+#====================================
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+#====================================
+#ignore distribution/build folders
+#====================================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+#====================================
+#ignore database files
+#====================================
+*.sqlite3
+*.db
+*.db-journal
