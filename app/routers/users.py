@@ -7,7 +7,7 @@ import resend
 
 from ..models.models import User, UserCreate, UserPublic, EmailVerificationToken
 from ..dependencies import get_session
-from ..security_utils import get_user, get_hash_password, get_active_current_user, set_verification_token
+from ..utils.security_utils import get_user, get_hash_password, get_active_current_user, set_verification_token
 from ..config import settings
 
 EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
@@ -19,7 +19,11 @@ router = APIRouter(
 
 
 @router.post("/", response_model=UserPublic, status_code=201)
-def create_user(session: Annotated[Session, Depends(get_session)], user_data: UserCreate, background_tasks: BackgroundTasks):
+def create_user(
+    session: Annotated[Session, Depends(get_session)], 
+    user_data: UserCreate, 
+    background_tasks: BackgroundTasks
+    ):
     """Create new user"""
 
     # check if user already exist

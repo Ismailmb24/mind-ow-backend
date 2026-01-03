@@ -3,9 +3,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import settings
-from .database import create_db_and_tables
-from .routers import tasks, users, auth
+from app.config import settings
+from app.database import create_db_and_tables
+from app.routers import tasks, users, auth
 
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 

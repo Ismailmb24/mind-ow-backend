@@ -38,3 +38,9 @@ dist/
 *.sqlite3
 *.db
 *.db-journal
+
+#====================================
+#ignore IDE/editor specific files
+#====================================
+.vscode/
+.idea/

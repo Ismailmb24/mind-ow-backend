@@ -1,4 +1,5 @@
 """Security utils for authentication"""
+import re
 from typing import Annotated
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
@@ -12,19 +13,38 @@ from pwdlib import PasswordHash
 import jwt
 from jwt.exceptions import InvalidTokenError
 import resend
+from google.oauth2 import id_token
+from google.auth.transport import requests
 
-from .models.models import User, RefreshToken, EmailVerificationToken
-from .dependencies import get_session
-from .config import settings
+from ..models.models import User, RefreshToken, EmailVerificationToken
+from ..dependencies import get_session
+from ..config import settings
 
+
+# Frontend base URL
+FRONT_END_BASE_URL = settings.FRONT_END_BASE_URL
+
+# Security settings
 SECRETE_KEY = settings.SECRETE_KEY
 ALGORITHM = settings.ALGORITHM
-RESEND_API_KEY = settings.RESEND_API_KEY
-EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
 
+# Resend API key
+RESEND_API_KEY = settings.RESEND_API_KEY
+
+# Google client ID
+GOOGLE_CLIENT_ID = settings.GOOGLE_CLIENT_ID
+
+# Expiration times
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
+RESET_PASSWORD_TOKEN_EXPIRE_MINUTES = settings.RESET_PASSWORD_TOKEN_EXPIRE_MINUTES
+
+
+# configure Resend API key
 resend.api_key = RESEND_API_KEY
 
+# password hashing configuration
 password_hash = PasswordHash.recommended()
+
 
 
 def get_hash_password(password: str):
@@ -121,8 +141,8 @@ def revoke_chained_fresh_tokens(token: RefreshToken | None, session: Session) ->
 
     session.commit()
 
-def create_email_verification_token():
-    """Create email verification token string"""
+def create_verification_token():
+    """Create validation token string for something like email verification or password reset etc."""
     return secrets.token_urlsafe(48)
 
 def send_verification_email(params: resend.Emails.SendParams):
@@ -134,7 +154,7 @@ def set_verification_token(background_tasks: BackgroundTasks, user: User, sessio
     """Set email verification token and send verification email"""
     # setup verification token data
     expires_hours = datetime.now(timezone.utc) + timedelta(hours=EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
-    verification_token = create_email_verification_token()
+    verification_token = create_verification_token()
     hash_verification_token = hash_token(verification_token)
 
     # store email verification token row
@@ -162,8 +182,70 @@ def set_verification_token(background_tasks: BackgroundTasks, user: User, sessio
         "subject": "Welcome to MindOw! Please verify your email",
         "html": f"<h1>Welcome to MindOw, {user.full_name or user.email}!</h1>"
                 f"<p>Please verify your email by clicking the link below:</p>"
-                f"<a href='https://your-frontend-domain.com/verify-email?token={verification_token}'>Verify Email</a>" # token to be replaced
+                f"<a href='{FRONT_END_BASE_URL}/auth/email-verification?token={verification_token}'>Verify Email</a>" # token to be replaced
     }
 
     # send verification email
     background_tasks.add_task(send_verification_email, params)
+
+def set_reset_password_token(background_tasks: BackgroundTasks, user: User, session: Session):
+    """Set reset password token and send reset password email"""
+    
+    expires_minutes = datetime.now(timezone.utc) + timedelta(minutes=RESET_PASSWORD_TOKEN_EXPIRE_MINUTES)
+    reset_token = create_verification_token()
+    hash_reset_token = hash_token(reset_token)
+
+    # check user ID
+    if user.id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="User does not have an ID"
+        )
+    
+    # store email verification token row
+    reset_token_row = EmailVerificationToken(
+        hash_token=hash_reset_token,
+        expired_at=expires_minutes,
+        user_id=user.id
+    )
+
+    session.add(reset_token_row)
+    session.commit()
+    session.refresh(reset_token_row)
+
+    # create email params
+    params: resend.Emails.SendParams = {
+        "from": "Support Team <onboarding@resend.dev>",
+        "to": [user.email],
+        "subject": "Reset your MindOw password",
+        "html": f"<h1>Reset your MindOw password</h1>"
+                f"<p>Please reset your password by clicking the link below:</p>"
+                f"<a href='{FRONT_END_BASE_URL}/auth/forgot-password?token={reset_token}'>Reset Password</a>"
+    }
+
+    # send reset password email
+    background_tasks.add_task(send_verification_email, params)
+
+def verify_google_token(token: str):
+    """Verify Google OAuth2 token and return email"""
+
+    try:
+        data = id_token.verify_oauth2_token(
+            token,
+            requests.Request(),
+            GOOGLE_CLIENT_ID
+        )
+
+        if not data.get("email_verified"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Google email not verified"
+            )
+        
+        return data
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Google token"
+        ) 
+    

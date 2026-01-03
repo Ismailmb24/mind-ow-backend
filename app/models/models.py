@@ -50,7 +50,7 @@ class UserBase(SQLModel):
 
 class User(UserBase, table=True):
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
-    hashed_password: str
+    hashed_password: str | None = Field(default=None, nullable=False)
 
     refresh_tokes: list["RefreshToken"] = Relationship(back_populates="user")
     email_verification_tokens: list["EmailVerificationToken"] = Relationship(back_populates="user")
@@ -60,6 +60,13 @@ class UserCreate(UserBase):
 
 class UserPublic(UserBase):
     id: UUID
+
+class UserUpdate(SQLModel):
+    username: str | None = None
+    full_name: str | None = None
+    bio: str | None = None
+    avatar_url: str | None = None
+    password: str | None = None
 
 
 #token models
@@ -91,3 +98,13 @@ class EmailVerificationToken(SQLModel, table=True):
 
     user_id: UUID = Field(foreign_key="user.id")
     user: User = Relationship(back_populates="email_verification_tokens")
+
+# password reset token model
+class PasswordResetToken(SQLModel, table=True):
+    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    hash_token: str
+    expired_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
+    used_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
+    user_id: UUID = Field(foreign_key="user.id")
+    user: User = Relationship()
