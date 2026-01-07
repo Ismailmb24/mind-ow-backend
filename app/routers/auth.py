@@ -82,7 +82,7 @@ def login_for_access_token(
 # Refresh access token endpoint
 @router.post("/refresh-token", response_model=Token)
 def refresh_access_token(
-    refresh_token: Annotated[str, Body()], 
+    refresh_token: Annotated[str, Body(embed=True)], 
     session: Annotated[Session, Depends(get_session)]
     ):
     """
@@ -155,7 +155,10 @@ def refresh_access_token(
 
 # Sign out endpoint
 @router.get("/signout")
-def signout(refresh_token: Annotated[str, Body()], session: Annotated[Session, Depends(get_session)]):
+def signout(
+    refresh_token: Annotated[str, Body(embed=True)], 
+    session: Annotated[Session, Depends(get_session)]
+):
     """
     Sign out user.
 
@@ -183,7 +186,7 @@ def signout(refresh_token: Annotated[str, Body()], session: Annotated[Session, D
 # Resend verification email endpoint
 @router.post("/resend-verification-email")
 def resend_verification_email(
-    email: Annotated[str, Body()],
+    email: Annotated[str, Body(embed=True)],
     session: Annotated[Session, Depends(get_session)], 
     background_tasks: BackgroundTasks
 ):
@@ -206,7 +209,7 @@ def resend_verification_email(
 # Email verification request endpoint
 @router.post("/verify-email")
 def verify_email(
-    token: Annotated[str, Body()],
+    token: Annotated[str, Body(embed=True)],
     session: Annotated[Session, Depends(get_session)]
 ):
     """
@@ -219,7 +222,6 @@ def verify_email(
     :param session: Description
     :type session: Annotated[Session, Depends(get_session)]
     """
-
     # hash the token
     hash_email_token = hash_token(token)
 
@@ -250,7 +252,7 @@ def verify_email(
 # Google sign-in endpoint
 @router.post("/google-signin", response_model=Token)
 def google_signin(
-    token: Annotated[str, Body()],
+    token: Annotated[str, Body(embed=True)],
     session: Annotated[Session, Depends(get_session)]
 ):
     """
@@ -331,7 +333,7 @@ def google_signin(
 # Forgot password request
 @router.post("/forgot-password")
 def forgot_password(
-    email: Annotated[str, Body()],
+    email: Annotated[str, Body(embed=True)],
     background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)]
 ):
