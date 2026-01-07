@@ -16,7 +16,7 @@ import resend
 from google.oauth2 import id_token
 from google.auth.transport import requests
 
-from ..models.models import User, RefreshToken, EmailVerificationToken
+from ..models.models import PasswordResetToken, User, RefreshToken, EmailVerificationToken
 from ..dependencies import get_session
 from ..config import settings
 
@@ -203,7 +203,7 @@ def set_reset_password_token(background_tasks: BackgroundTasks, user: User, sess
         )
     
     # store email verification token row
-    reset_token_row = EmailVerificationToken(
+    reset_token_row = PasswordResetToken(
         hash_token=hash_reset_token,
         expired_at=expires_minutes,
         user_id=user.id
@@ -220,7 +220,7 @@ def set_reset_password_token(background_tasks: BackgroundTasks, user: User, sess
         "subject": "Reset your MindOw password",
         "html": f"<h1>Reset your MindOw password</h1>"
                 f"<p>Please reset your password by clicking the link below:</p>"
-                f"<a href='{FRONT_END_BASE_URL}/auth/forgot-password?token={reset_token}'>Reset Password</a>"
+                f"<a href='{FRONT_END_BASE_URL}/auth/reset-password?token={reset_token}'>Reset Password</a>"
     }
 
     # send reset password email

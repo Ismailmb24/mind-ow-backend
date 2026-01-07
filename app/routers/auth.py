@@ -331,7 +331,7 @@ def google_signin(
 
 
 # Forgot password request
-@router.post("/forgot-password")
+@router.post("/forgot-password", response_model=dict)
 def forgot_password(
     email: Annotated[str, Body(embed=True)],
     background_tasks: BackgroundTasks,
