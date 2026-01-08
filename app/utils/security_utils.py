@@ -1,5 +1,5 @@
 """Security utils for authentication"""
-import re
+
 from typing import Annotated
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
@@ -10,8 +10,8 @@ from fastapi import HTTPException, status, Depends, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import select, Session
 from pwdlib import PasswordHash
-import jwt
-from jwt.exceptions import InvalidTokenError
+from jose import jwt
+from jose.exceptions import JWTError
 import resend
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -81,7 +81,7 @@ def get_curent_user(token: Annotated[str, Depends(oauth2_scheme)]):
         email = payload.get("sub")
         if email is None:
             raise credential_exception
-    except InvalidTokenError as e:
+    except JWTError as e:
         raise credential_exception from e
     user = get_user(email)
     if not user:

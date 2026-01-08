@@ -5,6 +5,7 @@ class Settings(BaseSettings):
 
     # Database settings
     DATABASE_URL: str = ""
+    REDIS_URL: str = ""
 
     # Security settings
     SECRETE_KEY: str = ""

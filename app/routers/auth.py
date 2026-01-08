@@ -153,36 +153,6 @@ def refresh_access_token(
     )
 
 
-# Sign out endpoint
-@router.get("/signout")
-def signout(
-    refresh_token: Annotated[str, Body(embed=True)], 
-    session: Annotated[Session, Depends(get_session)]
-):
-    """
-    Sign out user.
-
-    - **refresh_token**: refresh token
-    \f
-    :param request: Description
-    :type request: Request
-    :param session: Description
-    :type session: Annotated[Session, Depends(get_session)]
-    """
-
-    # hash the refresh token
-    hash_refresh_token = hash_token(refresh_token)
-
-    statement = select(RefreshToken).where(RefreshToken.hash_token == hash_refresh_token)
-    token_row = session.exec(statement).first()
-
-    if token_row:
-        token_row.revoked_at = datetime.now(timezone.utc)
-        session.commit()
-
-    return {"detail": "Signed out"}
-
-
 # Resend verification email endpoint
 @router.post("/resend-verification-email")
 def resend_verification_email(
@@ -328,6 +298,35 @@ def google_signin(
         refresh_token=refresh_token
     )
 
+
+# Sign out endpoint
+@router.get("/signout")
+def signout(
+    refresh_token: Annotated[str, Body(embed=True)], 
+    session: Annotated[Session, Depends(get_session)]
+):
+    """
+    Sign out user.
+
+    - **refresh_token**: refresh token
+    \f
+    :param request: Description
+    :type request: Request
+    :param session: Description
+    :type session: Annotated[Session, Depends(get_session)]
+    """
+
+    # hash the refresh token
+    hash_refresh_token = hash_token(refresh_token)
+
+    statement = select(RefreshToken).where(RefreshToken.hash_token == hash_refresh_token)
+    token_row = session.exec(statement).first()
+
+    if token_row:
+        token_row.revoked_at = datetime.now(timezone.utc)
+        session.commit()
+
+    return {"detail": "Signed out"}
 
 
 # Forgot password request
