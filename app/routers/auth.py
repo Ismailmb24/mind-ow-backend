@@ -51,6 +51,13 @@ def login_for_access_token(
             detail="Incorrect email or password"
         )
 
+    # check if email is verified
+    if not user.email_verified_at:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email not verified"
+        )
+    
     # create access token
     access_token_expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
