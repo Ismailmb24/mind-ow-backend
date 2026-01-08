@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import  Session, select
+from fastapi_limiter.depends import RateLimiter
 
 from app.dependencies import get_session
 from app.models.models import EmailVerificationToken, PasswordResetToken, Token, RefreshToken, User, UserCreate, UserUpdate
@@ -158,7 +159,8 @@ def refresh_access_token(
 def resend_verification_email(
     email: Annotated[str, Body(embed=True)],
     session: Annotated[Session, Depends(get_session)], 
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    _: Annotated[None, Depends(RateLimiter(times=5, seconds=60))]
 ):
     """
     Resend verification email.
@@ -180,7 +182,8 @@ def resend_verification_email(
 @router.post("/verify-email")
 def verify_email(
     token: Annotated[str, Body(embed=True)],
-    session: Annotated[Session, Depends(get_session)]
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[None, Depends(RateLimiter(times=5, seconds=60))],
 ):
     """
     Verify email using token.
@@ -334,7 +337,8 @@ def signout(
 def forgot_password(
     email: Annotated[str, Body(embed=True)],
     background_tasks: BackgroundTasks,
-    session: Annotated[Session, Depends(get_session)]
+    session: Annotated[Session, Depends(get_session)],
+    _: Annotated[None, Depends(RateLimiter(times=5, hours=24))],
 ):
     """
     Request a password reset.
