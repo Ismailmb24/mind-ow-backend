@@ -7,8 +7,7 @@ from sqlalchemy import Column, DateTime
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-# User model
-
+# USER MODELS
 # now function to get current UTC time
 def now():
     return datetime.now(timezone.utc)
@@ -43,6 +42,10 @@ class UserBase(SQLModel):
     # Authorization fields
     role: UserRoleEnum = Field(default=UserRoleEnum.USER)  # e.g., user, admin
 
+    #tiers and subscription fields
+    tier: str | None = None  # e.g., free, pro
+    tier_expires_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
     #meta data
     created_at: datetime | None = Field(default_factory=now, nullable=False)  # ISO format date string
     updated_at: datetime | None = Field(default_factory=now, nullable=False)  # ISO format date string
@@ -68,8 +71,20 @@ class UserUpdate(SQLModel):
     avatar_url: str | None = None
     password: str | None = None
 
+#SUBSCRIPTION MODELS
+class Subscription(SQLModel, table=True):
+    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id")
 
-#token models
+    provider: str  # e.g., stripe, paypal
+    provider_subscription_id: str  # subscription id from the provider
+    
+    tier: str  # e.g., free, pro
+    started_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
+    expires_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    cancelled_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
+# TOKEN MODELS
 class Token(SQLModel):
     access_token: str
     token_type: str

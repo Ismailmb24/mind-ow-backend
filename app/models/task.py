@@ -30,6 +30,8 @@ class TaskBase(SQLModel):
 class Task(TaskBase, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
 
+    user_id: UUID = Field(foreign_key="user.id")
+
 class TaskCreate(TaskBase):
     pass
 
